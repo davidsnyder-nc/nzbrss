@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NZB Feeds</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #454b71;
+        }
+        /* Hide all scrollbars */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        .card-enter {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+        .card-enter-active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        /* Modal styles */
+        .modal.hidden {
+            display: none;
+        }
+        /* Prevents aspect-ratio issues with Tailwind CDN */
+        .aspect-w-16 {
+            position: relative;
+            padding-bottom: 56.25%;
+        }
+        .aspect-w-16 > iframe {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+        }
+        .tooltip {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip.visible {
+            visibility: visible;
+            opacity: 1;
+        }
+        /* Sliding pill highlight for nav */
+        .nav-highlight {
+            position: absolute;
+            left: 0;
+            background: #6366f1; /* indigo-500 */
+            border-radius: 9999px;
+            box-shadow: 0 2px 8px 0 rgb(99 102 241 / 0.15);
+            transition: left 0.3s cubic-bezier(.4,0,.2,1), width 0.3s cubic-bezier(.4,0,.2,1), top 0.3s cubic-bezier(.4,0,.2,1), height 0.3s cubic-bezier(.4,0,.2,1);
+            z-index: 0;
+        }
+        #desktop-tabs button[data-index] {
+            position: relative;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body class="text-gray-200 hide-scrollbar">
+
+    <div class="container mx-auto px-4 py-8">
+        <!-- Feed selection tabs -->
+        <div id="nav-container" class="my-8 max-w-4xl mx-auto md:flex md:justify-center">
+             <!-- Navigation will be dynamically generated here -->
+        </div>
+
+        <!-- Content display area -->
+        <div id="content-area" class="pb-12">
+            <div id="loading-indicator" class="text-center py-16">
+                <svg class="animate-spin h-10 w-10 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p id="loading-text" class="mt-4 text-lg">Prefetching all feeds, please wait...</p>
+            </div>
+            <div id="error-message" class="hidden text-center bg-red-900 bg-opacity-80 border border-red-700 text-red-200 px-4 py-3 rounded-lg max-w-2xl mx-auto">
+                <strong class="font-bold">Error!</strong>
+                <span class="block sm:inline" id="error-text"></span>
+            </div>
+            <div id="feed-items" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+                <!-- Feed items will be injected here -->
+            </div>
+             <div id="table-view" class="hidden rounded-lg shadow-md bg-gray-800 bg-opacity-50">
+                <table class="w-full table-fixed text-sm text-left text-gray-300">
+                    <thead class="text-xs text-gray-200 uppercase bg-gray-700 bg-opacity-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 w-1/2">Title</th>
+                            <th scope="col" class="px-6 py-3 w-1/4">Category</th>
+                            <th scope="col" class="px-6 py-3 w-1/4">Published</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Table rows will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Details Modal -->
+    <div id="details-modal" class="modal hidden fixed inset-0 z-50 overflow-y-auto hide-scrollbar">
+        <div id="modal-overlay" class="fixed inset-0 bg-black bg-opacity-75 transition-opacity duration-300"></div>
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div id="modal-content-wrapper" class="relative bg-gray-800 rounded-lg shadow-xl w-full max-w-screen-xl max-h-[90vh] flex flex-col transition-transform duration-300 scale-95 md:max-w-3xl md:max-h-[95vh] md:w-[48rem] md:h-auto">
+                 <button id="modal-close-btn" class="absolute top-3 right-3 text-gray-400 hover:text-white z-20">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+                <div class="p-6 lg:p-8 hide-scrollbar md:p-4 md:text-xs md:leading-tight md:space-y-2 md:overflow-hidden">
+                    <div id="trailer-container" class="aspect-w-16 aspect-h-9 mb-3 rounded-lg overflow-hidden w-full md:max-h-[24vh]">
+                        <iframe id="modal-trailer" width="560" height="315" src="" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-6 md:h-full">
+                        <div class="md:col-span-2 md:h-full md:flex md:flex-col md:justify-center md:space-y-1">
+                            <h2 id="modal-title" class="text-xl font-bold text-white mb-1 md:text-base md:mb-1"></h2>
+                            <div class="flex items-center text-gray-400 text-xs mb-2 flex-wrap md:text-xs md:mb-1">
+                                <span id="modal-year"></span>
+                                <span class="mx-2">&middot;</span>
+                                <span id="modal-genres"></span>
+                                <span class="mx-2">&middot;</span>
+                                <span id="modal-rating"></span>
+                            </div>
+                            <p id="modal-overview" class="text-gray-300 mb-3 md:text-xs md:mb-2 md:line-clamp-2 md:overflow-hidden md:text-ellipsis"></p>
+                        </div>
+                    </div>
+                     <div id="cast-section" class="mt-4 md:mt-1">
+                        <h3 class="text-xl font-bold text-white mb-4">Cast</h3>
+                        <div id="modal-cast" class="flex overflow-x-auto gap-2 pb-2 hide-scrollbar md:gap-1 md:pb-1">
+                           <!-- Cast members will be injected here -->
+                        </div>
+                    </div>
+                </div>
+                 <!-- Buttons Footer -->
+                <div class="p-4 mt-auto bg-gray-900 bg-opacity-50 rounded-b-lg flex justify-end space-x-4 md:p-3">
+                     <a id="modal-tmdb-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-block bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors">View on TMDB</a>
+                     <a id="modal-add-btn" href="#" data-title="" class="inline-block bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors">+ Add to Server</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Item Modal -->
+    <div id="add-modal" class="modal hidden fixed inset-0 z-50 overflow-y-auto">
+        <div id="add-modal-overlay" class="fixed inset-0 bg-black bg-opacity-75 transition-opacity duration-300"></div>
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div id="add-modal-content-wrapper" class="relative bg-gray-800 rounded-lg shadow-xl w-full max-w-6xl h-[90vh] flex flex-col transition-transform duration-300 scale-95">
+                 <div class="p-4 border-b border-gray-700 flex justify-between items-center flex-shrink-0">
+                    <h2 id="add-modal-title" class="text-xl font-bold text-white">Add to Server</h2>
+                    <button id="add-modal-close-btn" class="text-gray-400 hover:text-white z-10">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <iframe id="add-modal-iframe" class="w-full flex-grow" src="" frameborder="0"></iframe>
+            </div>
+        </div>
+    </div>
+    
+    <div id="tooltip" class="fixed bottom-5 right-5 bg-green-500 text-white text-sm font-bold py-2 px-4 rounded-md shadow-lg tooltip">
+      Title copied to clipboard!
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIGURATION ---
+            const TMDB_API_KEY = 'YOUR_TMDB_API_KEY_HERE';
+            const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+            const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+
+            const feeds = [
+                { name: 'Trending Trailers', url: 'tmdb_trailers', type: 'mixed', source: 'tmdb', group: 'discover' },
+                { name: 'Trending Movies', url: 'YOUR_RSS_FEED_URL_HERE', type: 'movie', source: 'rss', group: 'discover' },
+                { name: 'New Movies', url: 'YOUR_RSS_FEED_URL_HERE', type: 'movie', source: 'rss', group: 'discover' },
+                { name: 'Upcoming Movies', url: 'YOUR_RSS_FEED_URL_HERE', type: 'movie', source: 'rss', group: 'discover' },
+                { name: 'Trending Shows', url: 'YOUR_RSS_FEED_URL_HERE', type: 'tv', source: 'rss', group: 'discover' },
+                { name: 'NZBs (Movies)', url: 'YOUR_RSS_FEED_URL_HERE', type: 'movie', source: 'recent', group: 'recent' },
+                { name: 'NZBs (TV)', url: 'YOUR_RSS_FEED_URL_HERE', type: 'tv', source: 'recent', group: 'recent' }
+            ];
+
+            // --- DOM ELEMENTS ---
+            const navContainer = document.getElementById('nav-container');
+            const contentArea = document.getElementById('feed-items');
+            const tableView = document.getElementById('table-view');
+            const tableBody = document.getElementById('table-body');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            // Details Modal
+            const detailsModal = document.getElementById('details-modal');
+            const detailsModalOverlay = document.getElementById('modal-overlay');
+            const detailsModalContentWrapper = document.getElementById('modal-content-wrapper');
+            const detailsModalCloseBtn = document.getElementById('modal-close-btn');
+            const modalAddBtn = document.getElementById('modal-add-btn');
+            // Add Modal
+            const addModal = document.getElementById('add-modal');
+            const addModalOverlay = document.getElementById('add-modal-overlay');
+            const addModalContentWrapper = document.getElementById('add-modal-content-wrapper');
+            const addModalCloseBtn = document.getElementById('add-modal-close-btn');
+            const addModalIframe = document.getElementById('add-modal-iframe');
+
+            const tooltip = document.getElementById('tooltip');
+            
+            // --- STATE ---
+            let feedCache = {};
+            let currentFeedData = [];
+            let activeTabIndex = 0;
+            
+            function getCleanTitle(title) {
+                 return title
+                    .replace(/\s*\(\d{4}\)/, '')
+                    .replace(/\s*\b(19|20)\d{2}\b/, '')
+                    .replace(/\s*\[.*?\]/g, '')
+                    .replace(/S\d+(E\d+)?/i, '')
+                    .replace(/\b(1080p|720p|2160p|4k|uhd|hdr|x265|x264|hevc|bluray|web-dl|webrip|brrip|dvdrip)\b/gi, '') 
+                    .replace(/-[a-z0-9]+$/i, '')
+                    .replace(/[._-]/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+            }
+            
+            async function getTmdbDetailsById(tmdbId, type) {
+                const detailsUrl = `${TMDB_BASE_URL}/${type}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=videos,credits`;
+                try {
+                    const detailsResponse = await fetch(detailsUrl);
+                    if (!detailsResponse.ok) return null;
+                    const detailsData = await detailsResponse.json();
+
+                    const trailer = detailsData.videos?.results?.find(v => v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'));
+                    const cast = detailsData.credits?.cast?.slice(0, 10).map(actor => ({
+                        id: actor.id,
+                        name: actor.name,
+                        character: actor.character,
+                        profile_path: actor.profile_path ? `${TMDB_IMAGE_BASE_URL}${actor.profile_path}` : 'https://placehold.co/200x300/1f2937/9ca3af?text=No+Photo'
+                    }));
+
+                    return {
+                        poster: detailsData.poster_path ? `${TMDB_IMAGE_BASE_URL}${detailsData.poster_path}` : null,
+                        year: (detailsData.release_date || detailsData.first_air_date || '').substring(0, 4),
+                        rating: detailsData.vote_average ? detailsData.vote_average.toFixed(1) : 'N/A',
+                        genres: detailsData.genres ? detailsData.genres.map(g => g.name).slice(0, 2).join(', ') : 'N/A',
+                        overview: detailsData.overview || 'No overview available.',
+                        trailerKey: trailer ? trailer.key : null,
+                        cast: cast || [],
+                        tmdbUrl: `https://www.themoviedb.org/${type}/${tmdbId}`
+                    };
+                } catch (e) {
+                    console.error('TMDB details fetch error:', e);
+                    return null;
+                }
+            }
+
+            async function getTmdbDetailsByTitle(title, type) {
+                const cleanedTitle = getCleanTitle(title);
+                const yearMatch = title.match(/\b(19|20)\d{2}\b/);
+                const rssYear = yearMatch ? yearMatch[0] : '';
+
+                if (!cleanedTitle) return null;
+
+                const searchUrl = `${TMDB_BASE_URL}/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(cleanedTitle)}`;
+                
+                try {
+                    const searchResponse = await fetch(searchUrl);
+                    if (!searchResponse.ok) return null;
+                    const searchData = await searchResponse.json();
+                    if (!searchData.results || searchData.results.length === 0) return null;
+
+                    let bestMatch = searchData.results[0];
+                    if (rssYear && searchData.results.length > 1) {
+                        searchData.results.sort((a, b) => {
+                            const yearA = (a.release_date || a.first_air_date || '9999').substring(0, 4);
+                            const yearB = (b.release_date || b.first_air_date || '9999').substring(0, 4);
+                            const diffA = yearA ? Math.abs(parseInt(yearA) - parseInt(rssYear)) : 100;
+                            const diffB = yearB ? Math.abs(parseInt(yearB) - parseInt(rssYear)) : 100;
+                            return diffA - diffB;
+                        });
+                        bestMatch = searchData.results[0];
+                    }
+                    
+                    return getTmdbDetailsById(bestMatch.id, type);
+                } catch (e) {
+                    console.error('TMDB title search error for:', title, e);
+                    return null;
+                }
+            }
+            
+            async function fetchRssFeed(url, type, isRecent = false) {
+                const proxyUrls = ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url='];
+                for (const proxy of proxyUrls) {
+                    const proxyFetchUrl = `${proxy}${encodeURIComponent(url)}`;
+                    try {
+                        const response = await fetch(proxyFetchUrl);
+                        if (!response.ok) continue;
+                        const text = await response.text();
+                        const parser = new DOMParser();
+                        const xml = parser.parseFromString(text, 'application/xml');
+                        if (xml.querySelector('parsererror')) continue;
+                        
+                        const items = Array.from(xml.querySelectorAll('item'));
+                        if (isRecent) {
+                            return items.map(item => parseRecentItem(item));
+                        }
+                        return await Promise.all(items.map(item => parseRssItem(item, type)));
+                    } catch (e) {
+                        console.warn(`Fetch error for proxy ${proxy}:`, e);
+                    }
+                }
+                throw new Error('All CORS proxies failed for RSS feed.');
+            }
+            
+            async function fetchTmdbData(endpoint, type) {
+                const url = `${TMDB_BASE_URL}/${endpoint}?api_key=${TMDB_API_KEY}`;
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) return [];
+                    const data = await response.json();
+                    const promises = data.results.map(item => parseTmdbItem(item, type));
+                    return Promise.all(promises);
+                } catch(e) { return []; }
+            }
+
+            async function parseRssItem(itemNode, type) {
+                const title = itemNode.querySelector('title')?.textContent || 'No Title';
+                const tmdbDetails = await getTmdbDetailsByTitle(title, type);
+                return createItemObject(title, tmdbDetails, type);
+            }
+            
+            function parseRecentItem(itemNode) {
+                return {
+                    title: itemNode.querySelector('title')?.textContent || 'N/A',
+                    link: itemNode.querySelector('link')?.textContent || '#',
+                    category: itemNode.querySelector('category')?.textContent || 'N/A',
+                    pubDate: itemNode.querySelector('pubDate')?.textContent || 'N/A',
+                };
+            }
+
+            async function parseTmdbItem(tmdbItem, type) {
+                const title = tmdbItem.title || tmdbItem.name;
+                const tmdbDetails = await getTmdbDetailsById(tmdbItem.id, type);
+                return createItemObject(title, tmdbDetails, type);
+            }
+
+            function createItemObject(title, tmdbDetails, type) {
+                const addUrl = type === 'movie' ? 'http://media.server:7878/add/new' : 'http://media.server:8989/add/new';
+                const cleanedTitle = getCleanTitle(title);
+
+                return {
+                    type,
+                    title,
+                    cleanedTitle,
+                    addUrl,
+                    image: tmdbDetails?.poster || 'https://placehold.co/500x750/111827/4b5563?text=Poster+Not+Found',
+                    year: tmdbDetails?.year || title.match(/\b(19|20)\d{2}\b/)?.[0] || 'N/A',
+                    genre: tmdbDetails?.genres || 'N/A',
+                    rating: tmdbDetails?.rating || 'N/A',
+                    overview: tmdbDetails?.overview || 'No overview available.',
+                    cast: tmdbDetails?.cast || [],
+                    trailerKey: tmdbDetails?.trailerKey,
+                    tmdbUrl: tmdbDetails?.tmdbUrl || '#',
+                };
+            }
+            
+            function renderTable(items) {
+                 tableBody.innerHTML = '';
+                if (!items || items.length === 0) {
+                   tableBody.innerHTML = `<tr><td colspan="3" class="text-center py-8 text-gray-400">No results found.</td></tr>`;
+                   return;
+                }
+                items.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.className = 'bg-gray-800 bg-opacity-50 border-b border-gray-700 hover:bg-gray-700';
+                    row.innerHTML = `
+                        <td class="px-6 py-4 font-medium text-white">
+                            <a href="${item.link}" target="_blank" rel="noopener noreferrer" class="block truncate hover:underline" title="${item.title}">${item.title}</a>
+                        </td>
+                        <td class="px-6 py-4 truncate" title="${item.category}">${item.category}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${new Date(item.pubDate).toLocaleString()}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            function renderItems(items) {
+                contentArea.innerHTML = '';
+                if (!items || items.length === 0) {
+                   contentArea.innerHTML = `<p class="col-span-full text-center text-gray-300 py-8">No results found.</p>`;
+                   return;
+                }
+                items.forEach((item, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'movie-card bg-black bg-opacity-20 rounded-lg overflow-hidden shadow-lg flex flex-col justify-between transform hover:scale-105 transition-transform duration-300 ease-in-out card-enter';
+                    card.dataset.index = index;
+                    card.innerHTML = `
+                        <div class="relative cursor-pointer" data-action="open-details-modal">
+                            <img src="${item.image}" alt="${item.title}" class="w-full h-auto object-cover aspect-[2/3] pointer-events-none" onerror="this.onerror=null;this.src='https://placehold.co/500x750/1f2937/9ca3af?text=Poster+Error';">
+                            ${item.year !== 'N/A' ? `<div class="absolute top-2 right-2 bg-black bg-opacity-75 text-white text-xs font-bold px-2 py-1 rounded-md pointer-events-none">${item.year}</div>` : ''}
+                        </div>
+                        <div class="p-3 flex items-center justify-between">
+                            <h3 class="text-sm font-semibold text-white truncate pointer-events-none" title="${item.cleanedTitle}">${item.cleanedTitle}</h3>
+                            <a href="${item.addUrl}" data-title="${item.cleanedTitle}" data-action="add-item" class="add-link flex-shrink-0 ml-2 text-2xl text-indigo-300 hover:text-indigo-200 font-bold" title="Add to server and copy title">+</a>
+                        </div>
+                    `;
+                    contentArea.appendChild(card);
+                    setTimeout(() => card.classList.add('card-enter-active'), index * 50);
+                });
+            }
+
+             function copyToClipboard(text) {
+                if (!text) return;
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed'; 
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    tooltip.classList.add('visible');
+                    setTimeout(() => tooltip.classList.remove('visible'), 2000);
+                } catch (err) {
+                    console.error('Failed to copy text: ', err);
+                }
+                document.body.removeChild(textarea);
+            }
+            
+            function openDetailsModal(item) {
+                document.getElementById('modal-title').textContent = item.title;
+                document.getElementById('modal-year').textContent = item.year;
+                document.getElementById('modal-genres').textContent = item.genre;
+                document.getElementById('modal-rating').textContent = `Rating: ${item.rating} / 10`;
+                document.getElementById('modal-overview').textContent = item.overview;
+                document.getElementById('modal-tmdb-link').href = item.tmdbUrl;
+                
+                modalAddBtn.href = item.addUrl;
+                modalAddBtn.dataset.title = item.cleanedTitle;
+
+                const castContainer = document.getElementById('modal-cast');
+                castContainer.innerHTML = ''; 
+                if (item.cast && item.cast.length > 0) {
+                    document.getElementById('cast-section').classList.remove('hidden');
+                    item.cast.slice(0, 6).forEach(actor => {
+                        const actorEl = document.createElement('div');
+                        actorEl.className = 'text-center md:w-14';
+                        actorEl.innerHTML = `
+                           <a href="https://www.themoviedb.org/person/${actor.id}" target="_blank" rel="noopener noreferrer" class="hover:opacity-80 transition-opacity">
+                                <img src="${actor.profile_path}" alt="${actor.name}" class="w-16 h-16 md:w-12 md:h-12 rounded-full object-cover mx-auto" onerror="this.onerror=null;this.src='https://placehold.co/200x200/1f2937/9ca3af?text=No+Pic';">
+                                <p class="text-xs mt-1 text-white font-bold w-16 truncate md:w-12 md:text-[10px]">${actor.name}</p>
+                                <p class="text-xs text-gray-400 w-16 truncate md:w-12 md:text-[9px]">${actor.character}</p>
+                            </a>
+                        `;
+                        castContainer.appendChild(actorEl);
+                    });
+                } else {
+                    document.getElementById('cast-section').classList.add('hidden');
+                }
+
+                const trailerContainer = document.getElementById('trailer-container');
+                const detailsModalTrailer = document.getElementById('modal-trailer');
+                if (item.trailerKey) {
+                    detailsModalTrailer.src = `https://www.youtube.com/embed/${item.trailerKey}`;
+                    trailerContainer.classList.remove('hidden');
+                } else {
+                    detailsModalTrailer.src = '';
+                    trailerContainer.classList.add('hidden');
+                }
+                
+                detailsModal.classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
+                setTimeout(() => {
+                     detailsModalOverlay.classList.remove('opacity-0');
+                     detailsModalContentWrapper.classList.remove('scale-95');
+                }, 10);
+            }
+
+            function closeDetailsModal() {
+                detailsModalOverlay.classList.add('opacity-0');
+                detailsModalContentWrapper.classList.add('scale-95');
+                const detailsModalTrailer = document.getElementById('modal-trailer');
+                setTimeout(() => {
+                    detailsModal.classList.add('hidden');
+                    detailsModalTrailer.src = '';
+                    document.body.style.overflow = '';
+                }, 300);
+            }
+
+            function openAddModal(url) {
+                addModalIframe.src = url;
+                addModal.classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
+                 setTimeout(() => {
+                     addModalOverlay.classList.remove('opacity-0');
+                     addModalContentWrapper.classList.remove('scale-95');
+                }, 10);
+            }
+
+            function closeAddModal() {
+                addModalOverlay.classList.add('opacity-0');
+                addModalContentWrapper.classList.add('scale-95');
+                setTimeout(() => {
+                    addModal.classList.add('hidden');
+                    addModalIframe.src = ''; 
+                    document.body.style.overflow = '';
+                }, 300);
+            }
+
+            function selectFeed(index) {
+                activeTabIndex = index;
+                updateTabStyles();
+                const feed = feeds[index];
+                currentFeedData = feedCache[feed.url] || [];
+
+                if(feed.source === 'recent') {
+                    contentArea.classList.add('hidden');
+                    tableView.classList.remove('hidden');
+                    renderTable(currentFeedData);
+                } else {
+                    tableView.classList.add('hidden');
+                    contentArea.classList.remove('hidden');
+                    renderItems(currentFeedData);
+                }
+            }
+
+            function updateTabStyles() {
+                const allDesktopTabs = document.querySelectorAll('#desktop-tabs button[data-index]');
+                allDesktopTabs.forEach((tab) => {
+                    const tabIndex = parseInt(tab.dataset.index);
+                    tab.classList.remove('bg-indigo-600', 'text-white', 'shadow', 'text-gray-300', 'hover:bg-gray-700/60');
+                    if (tabIndex === activeTabIndex) {
+                        tab.classList.add('bg-indigo-600', 'text-white', 'shadow');
+                    } else {
+                        tab.classList.add('text-gray-300', 'hover:bg-gray-700/60');
+                    }
+                });
+
+                const mobileSelect = document.getElementById('mobile-nav-select');
+                if(mobileSelect) {
+                    mobileSelect.value = activeTabIndex;
+                }
+
+                setTimeout(positionNavHighlight, 0);
+            }
+
+            function setupTabs() {
+                navContainer.innerHTML = '';
+
+                // Mobile Nav
+                const mobileNavWrapper = document.createElement('div');
+                mobileNavWrapper.className = 'w-full md:hidden flex items-center gap-2';
+
+                const mobileSelectContainer = document.createElement('div');
+                mobileSelectContainer.className = 'relative flex-grow';
+                const mobileSelect = document.createElement('select');
+                mobileSelect.id = 'mobile-nav-select';
+                mobileSelect.className = 'w-full px-4 py-2 text-white bg-gray-800 bg-opacity-50 border border-gray-600 rounded-md appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500';
+
+                feeds.forEach((feed, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = feed.name;
+                    mobileSelect.appendChild(option);
+                });
+                // Set value to current tab
+                mobileSelect.value = activeTabIndex;
+                // Attach event listener
+                mobileSelect.addEventListener('change', (e) => selectFeed(parseInt(e.target.value, 10)));
+                mobileSelectContainer.appendChild(mobileSelect);
+                // Add custom arrow as a DOM node (not via innerHTML)
+                const arrowDiv = document.createElement('div');
+                arrowDiv.className = 'absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none';
+                arrowDiv.innerHTML = `<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path></svg>`;
+                mobileSelectContainer.appendChild(arrowDiv);
+
+                // Mobile refresh button (only visible on mobile)
+                const mobileRefreshButton = document.createElement('button');
+                mobileRefreshButton.id = 'refresh-btn-mobile';
+                mobileRefreshButton.className = 'md:hidden relative flex-shrink-0 inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:outline-none border border-gray-600 rounded-md bg-gray-800 bg-opacity-50 text-gray-300 hover:bg-gray-700';
+                mobileRefreshButton.innerHTML = `<svg id="refresh-icon-mobile" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 4l1.5 1.5A9 9 0 0120.5 15M20 20l-1.5-1.5A9 9 0 013.5 9"></path></svg>`;
+                mobileRefreshButton.title = 'Refresh Feeds';
+                mobileRefreshButton.addEventListener('click', refreshFeeds);
+                mobileNavWrapper.appendChild(mobileSelectContainer);
+
+                // Desktop: Modern pill tab bar
+                const desktopNavWrapper = document.createElement('div');
+                desktopNavWrapper.id = 'desktop-tabs';
+                desktopNavWrapper.className = 'hidden md:flex items-center justify-center gap-2 bg-gray-800/60 rounded-xl p-2 shadow';
+
+                const createTab = (feed, index) => {
+                    const tabButton = document.createElement('button');
+                    tabButton.dataset.index = index;
+                    tabButton.className = 'px-4 py-2 rounded-full font-medium transition-colors duration-200 ease-in-out';
+                    // Custom label for NZBs (Movies) and NZBs (TV)
+                    if (feed.name === 'NZBs (Movies)') {
+                        tabButton.innerHTML = `<span>NZBs<br><span class='block text-[10px] text-gray-200 font-normal mt-[-2px]'>Movies</span></span>`;
+                    } else if (feed.name === 'NZBs (TV)') {
+                        tabButton.innerHTML = `<span>NZBs<br><span class='block text-[10px] text-gray-200 font-normal mt-[-2px]'>TV</span></span>`;
+                    } else if (feed.name.split(' ').length === 2) {
+                        const [first, second] = feed.name.split(' ');
+                        tabButton.innerHTML = `<span>${first}<br><span class='block text-[10px] text-gray-200 font-normal mt-[-2px]'>${second}</span></span>`;
+                    } else {
+                        tabButton.innerHTML = `<span>${feed.name}</span>`;
+                    }
+                    tabButton.addEventListener('click', () => selectFeed(index));
+                    if (index === activeTabIndex) {
+                        tabButton.classList.add('bg-indigo-600', 'text-white', 'shadow');
+                    } else {
+                        tabButton.classList.add('text-gray-300', 'hover:bg-gray-700/60');
+                    }
+                    return tabButton;
+                };
+
+                const discoverGroup = feeds.filter(f => f.group === 'discover');
+                const recentGroup = feeds.filter(f => f.group === 'recent');
+
+                discoverGroup.forEach(feed => {
+                    desktopNavWrapper.appendChild(createTab(feed, feeds.indexOf(feed)));
+                });
+
+                // Vertical divider
+                const separator = document.createElement('div');
+                separator.className = "w-px h-8 bg-gray-500 mx-2";
+                desktopNavWrapper.appendChild(separator);
+
+                recentGroup.forEach(feed => {
+                    desktopNavWrapper.appendChild(createTab(feed, feeds.indexOf(feed)));
+                });
+
+                // Desktop nav wrapper parent
+                const navFlexWrapper = document.createElement('div');
+                navFlexWrapper.className = 'hidden md:flex items-center gap-4 justify-center w-full';
+                navFlexWrapper.style.marginLeft = 'auto';
+                navFlexWrapper.style.marginRight = 'auto';
+                navFlexWrapper.appendChild(desktopNavWrapper);
+
+                navContainer.appendChild(navFlexWrapper);
+                navContainer.appendChild(mobileNavWrapper);
+
+                desktopNavWrapper.style.position = 'relative';
+                // Add highlight pill
+                const navHighlight = document.createElement('div');
+                navHighlight.className = 'nav-highlight';
+                navHighlight.style.display = 'none'; // Hide until positioned
+                desktopNavWrapper.appendChild(navHighlight);
+
+                setTimeout(positionNavHighlight, 0);
+            }
+            
+            async function refreshFeeds() {
+                const refreshIcons = document.querySelectorAll('#refresh-icon');
+                refreshIcons.forEach(icon => icon.classList.add('animate-spin'));
+                contentArea.classList.add('hidden');
+                tableView.classList.add('hidden');
+                loadingIndicator.classList.remove('hidden');
+                feedCache = {}; 
+                await fetchAllFeeds();
+                refreshIcons.forEach(icon => icon.classList.remove('animate-spin'));
+            }
+
+            async function fetchAllFeeds() {
+                 const fetchPromises = feeds.map(feed => {
+                    if (feed.source === 'tmdb') {
+                        return Promise.all([
+                            fetchTmdbData('movie/upcoming', 'movie'), 
+                            fetchTmdbData('tv/popular', 'tv')
+                        ]).then(([movies, tv]) => {
+                            const movieTrailers = movies.filter(item => item && item.trailerKey);
+                            const tvTrailers = tv.filter(item => item && item.trailerKey);
+                            return [...movieTrailers, ...tvTrailers];
+                        });
+                    }
+                    return fetchRssFeed(feed.url, feed.type, feed.source === 'recent');
+                 });
+                const results = await Promise.allSettled(fetchPromises);
+                results.forEach((result, index) => {
+                    const url = feeds[index].url;
+                    if(result.status === 'fulfilled'){
+                       feedCache[url] = result.value;
+                    } else {
+                       feedCache[url] = null;
+                       console.error(`Failed to fetch feed ${feeds[index].name}:`, result.reason);
+                    }
+                });
+                loadingIndicator.style.display = 'none';
+                selectFeed(activeTabIndex);
+            }
+
+            async function initializeApp() {
+                setupTabs();
+                await fetchAllFeeds();
+            }
+            
+            // --- EVENT LISTENERS ---
+            contentArea.addEventListener('click', (e) => {
+                const actionTarget = e.target.closest('[data-action]');
+                if (!actionTarget) return;
+                const action = actionTarget.dataset.action;
+                const card = actionTarget.closest('.movie-card');
+                if (!card) return;
+                const index = card.dataset.index;
+                const item = currentFeedData[index];
+                if (action === 'open-details-modal') openDetailsModal(item);
+                else if (action === 'add-item') {
+                    e.preventDefault();
+                    copyToClipboard(item.cleanedTitle);
+                    openAddModal(actionTarget.href);
+                }
+            });
+
+            modalAddBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const title = e.target.dataset.title;
+                const url = e.target.href;
+                copyToClipboard(title);
+                closeDetailsModal();
+                openAddModal(url);
+            });
+
+            detailsModalCloseBtn.addEventListener('click', closeDetailsModal);
+            detailsModalOverlay.addEventListener('click', closeDetailsModal);
+            addModalCloseBtn.addEventListener('click', closeAddModal);
+            addModalOverlay.addEventListener('click', closeAddModal);
+
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    if (!detailsModal.classList.contains('hidden')) closeDetailsModal();
+                    if (!addModal.classList.contains('hidden')) closeAddModal();
+                }
+            });
+
+            function positionNavHighlight() {
+                const nav = document.getElementById('desktop-tabs');
+                if (!nav) return;
+                const highlight = nav.querySelector('.nav-highlight');
+                const activeTab = nav.querySelector('button.bg-indigo-600');
+                if (!highlight || !activeTab) {
+                    if (highlight) highlight.style.display = 'none';
+                    return;
+                }
+                const navRect = nav.getBoundingClientRect();
+                const tabRect = activeTab.getBoundingClientRect();
+                highlight.style.display = 'block';
+                highlight.style.left = (tabRect.left - navRect.left) + 'px';
+                highlight.style.width = tabRect.width + 'px';
+                highlight.style.top = (tabRect.top - navRect.top) + 'px';
+                highlight.style.height = tabRect.height + 'px';
+            }
+
+            initializeApp();
+        });
+    </script>
+</body>
+</html>

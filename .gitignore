@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# VSCode
+.vscode/
+
+# Node/npm (not needed, but common)
+node_modules/
+
+# Logs
+*.log
+
+# Other
+.env 
