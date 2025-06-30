@@ -38,4 +38,19 @@ Pull requests and suggestions are welcome! Please open an issue or PR.
 
 ## License
 
-MIT 
+MIT
+
+## SABnzbd Integration
+
+This app can display your SABnzbd download queue and history in a dedicated tab. To enable this feature:
+
+1. Open `index.html` in a text editor.
+2. Locate the configuration section at the top of the file:
+   - Set `SABNZBD_URL` to the base URL of your SABnzbd server (e.g., `http://192.168.1.20:8080`).
+   - Set `SABNZBD_API_KEY` to your SABnzbd API key (found in SABnzbd under Config > General > API Key).
+3. Save the file and open it in your browser.
+
+**Note:**
+- For SABnzbd integration to work, your browser must be able to access the SABnzbd server directly (usually on the same local network).
+- If you encounter CORS errors, you may need to use a browser extension or proxy to allow cross-origin requests.
+- The Downloads tab will show your current queue and recent history, including status and progress bars. 
