@@ -69,18 +69,33 @@
             position: relative;
             z-index: 1;
         }
+        .progress-bar {
+            background-color: #374151; /* gray-700 */
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+        .progress-bar-inner {
+            background-color: #4f46e5; /* indigo-600 */
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.3s ease-in-out;
+            text-align: center;
+            color: white;
+            font-size: 10px;
+            line-height: 1.25rem;
+        }
     </style>
 </head>
 <body class="text-gray-200 hide-scrollbar">
 
     <div class="container mx-auto px-4 py-8">
         <!-- Feed selection tabs -->
-        <div id="nav-container" class="my-8 max-w-4xl mx-auto md:flex md:justify-center">
+        <div id="nav-container" class="my-8 max-w-5xl mx-auto md:flex md:justify-center">
              <!-- Navigation will be dynamically generated here -->
         </div>
 
         <!-- Content display area -->
-        <div id="content-area" class="pb-12">
+        <div id="content-area-wrapper" class="pb-12">
             <div id="loading-indicator" class="text-center py-16">
                 <svg class="animate-spin h-10 w-10 text-white mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -89,23 +104,39 @@
                 <p id="loading-text" class="mt-4 text-lg">Prefetching all feeds, please wait...</p>
             </div>
             <div id="error-message" class="hidden text-center bg-red-900 bg-opacity-80 border border-red-700 text-red-200 px-4 py-3 rounded-lg max-w-2xl mx-auto">
-                <strong class="font-bold">Error!</strong>
-                <span class="block sm:inline" id="error-text"></span>
+                 <span id="error-text"></span>
             </div>
             <div id="feed-items" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
                 <!-- Feed items will be injected here -->
             </div>
-             <div id="table-view" class="hidden rounded-lg shadow-md bg-gray-800 bg-opacity-50">
-                <table class="w-full table-fixed text-sm text-left text-gray-300">
+             <div id="table-view" class="hidden rounded-lg shadow-md bg-gray-800 bg-opacity-50 overflow-x-auto w-full">
+                <table class="min-w-[600px] sm:min-w-0 w-full table-fixed text-sm text-left text-gray-300">
                     <thead class="text-xs text-gray-200 uppercase bg-gray-700 bg-opacity-50">
                         <tr>
                             <th scope="col" class="px-6 py-3 w-1/2">Title</th>
                             <th scope="col" class="px-6 py-3 w-1/4">Category</th>
                             <th scope="col" class="px-6 py-3 w-1/4">Published</th>
+                            <th scope="col" class="px-6 py-3 w-1/6 nzbgeek-th">NZBGeek</th>
                         </tr>
                     </thead>
                     <tbody id="table-body">
                         <!-- Table rows will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+            <!-- SABnzbd Downloads Table -->
+            <div id="sabnzbd-view" class="hidden rounded-lg shadow-md bg-gray-800 bg-opacity-50 overflow-x-auto w-full">
+                <table class="w-full table-auto text-sm text-left text-gray-300">
+                    <thead class="text-xs text-gray-200 uppercase bg-gray-700 bg-opacity-50">
+                        <tr>
+                            <th scope="col" class="px-4 py-3 w-2/5">Filename</th>
+                            <th scope="col" class="px-4 py-3 w-1/5">Category</th>
+                            <th scope="col" class="px-4 py-3 w-1/5">Size</th>
+                            <th scope="col" class="px-4 py-3 w-1/5">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sabnzbd-table-body">
+                        <!-- SABnzbd download rows will be injected here -->
                     </tbody>
                 </table>
             </div>
@@ -148,6 +179,7 @@
                 <div class="p-4 mt-auto bg-gray-900 bg-opacity-50 rounded-b-lg flex justify-end space-x-4 md:p-3">
                      <a id="modal-tmdb-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-block bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors">View on TMDB</a>
                      <a id="modal-add-btn" href="#" data-title="" class="inline-block bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors">+ Add to Server</a>
+                     <a id="modal-nzbgeek-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-block bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 transition-colors hidden">View on NZBGeek</a>
                 </div>
             </div>
         </div>
@@ -176,26 +208,34 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // --- CONFIGURATION ---
-            const TMDB_API_KEY = 'YOUR_TMDB_API_KEY_HERE';
+            const TMDB_API_KEY = '';
             const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
             const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
+            const SABNZBD_URL = '';
+            const SABNZBD_API_KEY = '';
 
             const feeds = [
-                { name: 'Trending Trailers', url: 'tmdb_trailers', type: 'mixed', source: 'tmdb', group: 'discover' },
-                { name: 'Trending Movies', url: 'YOUR_RSS_FEED_URL_HERE', type: 'movie', source: 'rss', group: 'discover' },
-                { name: 'New Movies', url: 'YOUR_RSS_FEED_URL_HERE', type: 'movie', source: 'rss', group: 'discover' },
-                { name: 'Upcoming Movies', url: 'YOUR_RSS_FEED_URL_HERE', type: 'movie', source: 'rss', group: 'discover' },
-                { name: 'Trending Shows', url: 'YOUR_RSS_FEED_URL_HERE', type: 'tv', source: 'rss', group: 'discover' },
-                { name: 'NZBs (Movies)', url: 'YOUR_RSS_FEED_URL_HERE', type: 'movie', source: 'recent', group: 'recent' },
-                { name: 'NZBs (TV)', url: 'YOUR_RSS_FEED_URL_HERE', type: 'tv', source: 'recent', group: 'recent' }
+                { name: 'Trending Movies', url: '', type: 'movie', source: 'rss', group: 'discover' },
+                { name: 'New Movies', url: '', type: 'movie', source: 'rss', group: 'discover' },
+                { name: 'Upcoming Movies', url: '', type: 'movie', source: 'rss', group: 'discover' },
+                { name: 'Trending Shows', url: '', type: 'tv', source: 'rss', group: 'discover' },
+                { name: 'Trending Trailers', url: '', type: 'mixed', source: 'tmdb', group: 'discover' },
+                { name: 'NZBs (Movies)', url: '', type: 'movie', source: 'recent', group: 'recent' },
+                { name: 'NZBs (TV)', url: '', type: 'tv', source: 'recent', group: 'recent' },
+                { name: 'Downloads', url: '', type: 'sabnzbd', source: 'sabnzbd', group: 'server' }
             ];
 
             // --- DOM ELEMENTS ---
             const navContainer = document.getElementById('nav-container');
-            const contentArea = document.getElementById('feed-items');
+            const feedItemsContainer = document.getElementById('feed-items');
             const tableView = document.getElementById('table-view');
             const tableBody = document.getElementById('table-body');
+            const sabnzbdView = document.getElementById('sabnzbd-view');
+            const sabnzbdTableBody = document.getElementById('sabnzbd-table-body');
             const loadingIndicator = document.getElementById('loading-indicator');
+            const errorMessageDiv = document.getElementById('error-message');
+            const errorTextSpan = document.getElementById('error-text');
+
             // Details Modal
             const detailsModal = document.getElementById('details-modal');
             const detailsModalOverlay = document.getElementById('modal-overlay');
@@ -214,7 +254,10 @@
             // --- STATE ---
             let feedCache = {};
             let currentFeedData = [];
-            let activeTabIndex = 0;
+            let activeTabIndex = feeds.findIndex(f => f.name === 'Downloads');
+            
+            let sabnzbdPollInterval = null;
+            const SABNZBD_POLL_MS = 30000; // 30 seconds
             
             function getCleanTitle(title) {
                  return title
@@ -267,26 +310,34 @@
 
                 if (!cleanedTitle) return null;
 
-                const searchUrl = `${TMDB_BASE_URL}/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(cleanedTitle)}`;
-                
+                let searchUrl = `${TMDB_BASE_URL}/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(cleanedTitle)}`;
+                if (rssYear) {
+                    if (type === 'movie') searchUrl += `&year=${rssYear}`;
+                    else if (type === 'tv') searchUrl += `&first_air_date_year=${rssYear}`;
+                }
+
                 try {
-                    const searchResponse = await fetch(searchUrl);
+                    let searchResponse = await fetch(searchUrl);
                     if (!searchResponse.ok) return null;
-                    const searchData = await searchResponse.json();
-                    if (!searchData.results || searchData.results.length === 0) return null;
+                    let searchData = await searchResponse.json();
+
+                    if ((!searchData.results || searchData.results.length === 0) && cleanedTitle !== title) {
+                        let fallbackUrl = `${TMDB_BASE_URL}/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}`;
+                        if (rssYear) {
+                           if (type === 'movie') fallbackUrl += `&year=${rssYear}`;
+                           else if (type === 'tv') fallbackUrl += `&first_air_date_year=${rssYear}`;
+                        }
+                        searchResponse = await fetch(fallbackUrl);
+                        if (!searchResponse.ok) return null;
+                        searchData = await searchResponse.json();
+                    }
+
+                    if (!searchData.results || searchData.results.length === 0) {
+                        console.warn('TMDB search failed for:', title, 'Type:', type, 'Year:', rssYear);
+                        return null;
+                    }
 
                     let bestMatch = searchData.results[0];
-                    if (rssYear && searchData.results.length > 1) {
-                        searchData.results.sort((a, b) => {
-                            const yearA = (a.release_date || a.first_air_date || '9999').substring(0, 4);
-                            const yearB = (b.release_date || b.first_air_date || '9999').substring(0, 4);
-                            const diffA = yearA ? Math.abs(parseInt(yearA) - parseInt(rssYear)) : 100;
-                            const diffB = yearB ? Math.abs(parseInt(yearB) - parseInt(rssYear)) : 100;
-                            return diffA - diffB;
-                        });
-                        bestMatch = searchData.results[0];
-                    }
-                    
                     return getTmdbDetailsById(bestMatch.id, type);
                 } catch (e) {
                     console.error('TMDB title search error for:', title, e);
@@ -295,16 +346,28 @@
             }
             
             async function fetchRssFeed(url, type, isRecent = false) {
-                const proxyUrls = ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url='];
-                for (const proxy of proxyUrls) {
-                    const proxyFetchUrl = `${proxy}${encodeURIComponent(url)}`;
+                 const proxyConfigs = [
+                    { url: 'https://proxy.cors.sh/', needsEncoding: false, headers: { 'x-cors-api-key': 'temp_18025585b54632d4319d77a80b8529f7' } },
+                    { url: 'https://api.allorigins.win/raw?url=', needsEncoding: true },
+                    { url: 'https://corsproxy.io/?', needsEncoding: true },
+                ];
+
+                for (const proxy of proxyConfigs) {
+                    const targetUrl = proxy.needsEncoding ? encodeURIComponent(url) : url;
+                    const proxyFetchUrl = proxy.url + targetUrl;
                     try {
-                        const response = await fetch(proxyFetchUrl);
-                        if (!response.ok) continue;
+                        const response = await fetch(proxyFetchUrl, { headers: proxy.headers || {} });
+                        if (!response.ok) {
+                            console.warn(`Proxy ${proxy.url} for RSS failed with status: ${response.status}`);
+                            continue;
+                        }
                         const text = await response.text();
                         const parser = new DOMParser();
                         const xml = parser.parseFromString(text, 'application/xml');
-                        if (xml.querySelector('parsererror')) continue;
+                        if (xml.querySelector('parsererror')) {
+                            console.warn(`Proxy ${proxy.url} returned invalid XML for feed: ${url}`);
+                            continue;
+                        };
                         
                         const items = Array.from(xml.querySelectorAll('item'));
                         if (isRecent) {
@@ -312,10 +375,48 @@
                         }
                         return await Promise.all(items.map(item => parseRssItem(item, type)));
                     } catch (e) {
-                        console.warn(`Fetch error for proxy ${proxy}:`, e);
+                        console.error(`Fetch error for RSS with proxy ${proxy.url}:`, e);
                     }
                 }
-                throw new Error('All CORS proxies failed for RSS feed.');
+                throw new Error(`All CORS proxies failed for RSS feed: ${url}`);
+            }
+
+            async function fetchSabnzbdHistory() {
+                // This function uses a direct connection method as requested.
+                // This will only work if the web page is hosted on the same local network
+                // as the SABnzbd server, or if CORS restrictions are otherwise handled (e.g., browser extension).
+                const historyUrl = `${SABNZBD_URL}/api?output=json&apikey=${SABNZBD_API_KEY}&mode=history&limit=50`;
+                const queueUrl = `${SABNZBD_URL}/api?output=json&apikey=${SABNZBD_API_KEY}&mode=q`;
+
+                try {
+                    // Fetch both history and queue concurrently
+                    const [historyResponse, queueResponse] = await Promise.all([
+                        fetch(historyUrl),
+                        fetch(queueUrl)
+                    ]);
+
+                    if (!historyResponse.ok) {
+                        throw new Error(`SABnzbd history request failed with status: ${historyResponse.status}. Check server URL and ensure it is accessible.`);
+                    }
+
+                    const historyData = await historyResponse.json();
+                    let queueData = { queue: { slots: [] } };
+
+                    if (queueResponse.ok) {
+                        queueData = await queueResponse.json();
+                    } else {
+                        console.warn(`SABnzbd queue request failed with status: ${queueResponse.status}`);
+                    }
+                    
+                    const historySlots = (historyData && historyData.history && historyData.history.slots) ? historyData.history.slots : [];
+                    const queueSlots = (queueData && queueData.queue && queueData.queue.slots) ? queueData.queue.slots : [];
+
+                    return [...queueSlots, ...historySlots];
+
+                } catch (error) {
+                    console.error('Direct fetch to SABnzbd failed:', error);
+                    throw new Error(`Could not connect to SABnzbd at ${SABNZBD_URL}. This can be due to a network issue or your browser's CORS policy. Ensure the page is accessed from the same local network.`);
+                }
             }
             
             async function fetchTmdbData(endpoint, type) {
@@ -329,16 +430,36 @@
                 } catch(e) { return []; }
             }
 
+            // Helper to extract NZBGeek link from title
+            function extractNzbgeekLink(title) {
+                const match = title.match(/@(https:\/\/nzbgeek\.info\/geekseek\.php\?[^\s]+)/);
+                return match ? match[1] : null;
+            }
+
             async function parseRssItem(itemNode, type) {
                 const title = itemNode.querySelector('title')?.textContent || 'No Title';
+                // Try to get NZBGeek link from <show> or <movie> tag
+                let nzbgeekLink = null;
+                if (type === 'tv') {
+                    nzbgeekLink = itemNode.querySelector('show')?.textContent || null;
+                } else if (type === 'movie') {
+                    nzbgeekLink = itemNode.querySelector('movie')?.textContent || null;
+                }
+                // Fallback: try to extract from title (legacy feeds)
+                if (!nzbgeekLink) {
+                    nzbgeekLink = extractNzbgeekLink(title);
+                }
                 const tmdbDetails = await getTmdbDetailsByTitle(title, type);
-                return createItemObject(title, tmdbDetails, type);
+                return createItemObject(title, tmdbDetails, type, nzbgeekLink);
             }
             
             function parseRecentItem(itemNode) {
+                // Get NZBGeek link from <guid> tag
+                let nzbgeekLink = itemNode.querySelector('guid')?.textContent || null;
                 return {
                     title: itemNode.querySelector('title')?.textContent || 'N/A',
-                    link: itemNode.querySelector('link')?.textContent || '#',
+                    link: itemNode.querySelector('link')?.textContent || '#', // This is the NZB file
+                    nzbgeekLink, // This is the web page
                     category: itemNode.querySelector('category')?.textContent || 'N/A',
                     pubDate: itemNode.querySelector('pubDate')?.textContent || 'N/A',
                 };
@@ -347,13 +468,12 @@
             async function parseTmdbItem(tmdbItem, type) {
                 const title = tmdbItem.title || tmdbItem.name;
                 const tmdbDetails = await getTmdbDetailsById(tmdbItem.id, type);
-                return createItemObject(title, tmdbDetails, type);
+                return createItemObject(title, tmdbDetails, type, extractNzbgeekLink(title));
             }
 
-            function createItemObject(title, tmdbDetails, type) {
+            function createItemObject(title, tmdbDetails, type, nzbgeekLink) {
                 const addUrl = type === 'movie' ? 'http://media.server:7878/add/new' : 'http://media.server:8989/add/new';
                 const cleanedTitle = getCleanTitle(title);
-
                 return {
                     type,
                     title,
@@ -367,15 +487,29 @@
                     cast: tmdbDetails?.cast || [],
                     trailerKey: tmdbDetails?.trailerKey,
                     tmdbUrl: tmdbDetails?.tmdbUrl || '#',
+                    link: nzbgeekLink || tmdbDetails?.link || '#',
                 };
             }
             
             function renderTable(items) {
-                 tableBody.innerHTML = '';
-                if (!items || items.length === 0) {
-                   tableBody.innerHTML = `<tr><td colspan="3" class="text-center py-8 text-gray-400">No results found.</td></tr>`;
-                   return;
+                tableBody.innerHTML = '';
+                // Update table header (find thead and add a new th if not present)
+                const table = tableBody.closest('table');
+                if (table) {
+                    const theadRow = table.querySelector('thead tr');
+                    if (theadRow && !theadRow.querySelector('.nzbgeek-th')) {
+                        const th = document.createElement('th');
+                        th.className = 'px-6 py-3 w-1/6 nzbgeek-th';
+                        th.textContent = 'NZBGeek';
+                        theadRow.appendChild(th);
+                    }
                 }
+                // Only show 'No results found' if items is an array and is empty
+                if (Array.isArray(items) && items.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-gray-400">No results found.</td></tr>`;
+                    return;
+                }
+                if (!Array.isArray(items)) return;
                 items.forEach(item => {
                     const row = document.createElement('tr');
                     row.className = 'bg-gray-800 bg-opacity-50 border-b border-gray-700 hover:bg-gray-700';
@@ -385,17 +519,61 @@
                         </td>
                         <td class="px-6 py-4 truncate" title="${item.category}">${item.category}</td>
                         <td class="px-6 py-4 whitespace-nowrap">${new Date(item.pubDate).toLocaleString()}</td>
+                        <td class="px-6 py-4 text-center">
+                            ${item.nzbgeekLink && item.nzbgeekLink.startsWith('http') ? `<a href="${item.nzbgeekLink}" target="_blank" rel="noopener noreferrer" class="inline-block bg-yellow-600 text-white px-3 py-1 rounded-md hover:bg-yellow-700 transition-colors text-xs font-semibold">View on NZBGeek</a>` : ''}
+                        </td>
                     `;
                     tableBody.appendChild(row);
                 });
             }
 
-            function renderItems(items) {
-                contentArea.innerHTML = '';
+            // New function to render the SABnzbd table
+            function renderSabnzbdTable(items) {
+                sabnzbdTableBody.innerHTML = '';
                 if (!items || items.length === 0) {
-                   contentArea.innerHTML = `<p class="col-span-full text-center text-gray-300 py-8">No results found.</p>`;
-                   return;
+                    sabnzbdTableBody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-gray-400">No download history found.</td></tr>`;
+                    return;
                 }
+                items.forEach(item => {
+                    const row = document.createElement('tr');
+                    row.className = 'bg-gray-800 bg-opacity-50 border-b border-gray-700 hover:bg-gray-700';
+                    
+                    let statusHtml;
+                    const status = item.status.toLowerCase();
+                    
+                    if (status === 'downloading') {
+                        const percentage = item.percentage || '0';
+                        statusHtml = `
+                            <div class="progress-bar w-full h-5">
+                                <div class="progress-bar-inner" style="width: ${percentage}%;">${percentage}%</div>
+                            </div>
+                        `;
+                    } else if (status === 'completed') {
+                        statusHtml = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900 text-green-300">${item.status}</span>`;
+                    } else if (status === 'failed') {
+                        statusHtml = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-900 text-red-300">${item.status}</span>`;
+                    } else {
+                         statusHtml = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-900 text-yellow-300">${item.status}</span>`;
+                    }
+
+                    row.innerHTML = `
+                        <td class="px-4 py-3 font-medium text-white truncate max-w-xs whitespace-nowrap" style="max-width: 16rem;" title="${item.filename || item.name}">${item.filename || item.name}</td>
+                        <td class="px-4 py-3 truncate" title="${item.category}">${item.category}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">${item.size}</td>
+                        <td class="px-4 py-3">${statusHtml}</td>
+                    `;
+                    sabnzbdTableBody.appendChild(row);
+                });
+            }
+
+            function renderItems(items) {
+                feedItemsContainer.innerHTML = '';
+                // Only show 'No results found' if items is an array and is empty
+                if (Array.isArray(items) && items.length === 0) {
+                    feedItemsContainer.innerHTML = `<p class="col-span-full text-center text-gray-300 py-8">No results found.</p>`;
+                    return;
+                }
+                if (!Array.isArray(items)) return;
                 items.forEach((item, index) => {
                     const card = document.createElement('div');
                     card.className = 'movie-card bg-black bg-opacity-20 rounded-lg overflow-hidden shadow-lg flex flex-col justify-between transform hover:scale-105 transition-transform duration-300 ease-in-out card-enter';
@@ -410,7 +588,7 @@
                             <a href="${item.addUrl}" data-title="${item.cleanedTitle}" data-action="add-item" class="add-link flex-shrink-0 ml-2 text-2xl text-indigo-300 hover:text-indigo-200 font-bold" title="Add to server and copy title">+</a>
                         </div>
                     `;
-                    contentArea.appendChild(card);
+                    feedItemsContainer.appendChild(card);
                     setTimeout(() => card.classList.add('card-enter-active'), index * 50);
                 });
             }
@@ -480,6 +658,16 @@
                      detailsModalOverlay.classList.remove('opacity-0');
                      detailsModalContentWrapper.classList.remove('scale-95');
                 }, 10);
+
+                // NZBGeek link button logic
+                const nzbgeekBtn = document.getElementById('modal-nzbgeek-link');
+                if (item.link && item.link.startsWith('http')) {
+                    nzbgeekBtn.href = item.link;
+                    nzbgeekBtn.classList.remove('hidden');
+                } else {
+                    nzbgeekBtn.href = '#';
+                    nzbgeekBtn.classList.add('hidden');
+                }
             }
 
             function closeDetailsModal() {
@@ -517,15 +705,28 @@
                 activeTabIndex = index;
                 updateTabStyles();
                 const feed = feeds[index];
-                currentFeedData = feedCache[feed.url] || [];
+                currentFeedData = feedCache[feed.url];
 
-                if(feed.source === 'recent') {
-                    contentArea.classList.add('hidden');
+                // Hide all content views initially
+                feedItemsContainer.classList.add('hidden');
+                tableView.classList.add('hidden');
+                sabnzbdView.classList.add('hidden');
+                loadingIndicator.style.display = 'none';
+
+                // Show loading indicator if data is not yet loaded
+                if (typeof currentFeedData === 'undefined') {
+                    loadingIndicator.style.display = '';
+                    return;
+                }
+
+                if (feed.source === 'recent') {
                     tableView.classList.remove('hidden');
                     renderTable(currentFeedData);
+                } else if (feed.source === 'sabnzbd') {
+                    sabnzbdView.classList.remove('hidden');
+                    renderSabnzbdTable(currentFeedData);
                 } else {
-                    tableView.classList.add('hidden');
-                    contentArea.classList.remove('hidden');
+                    feedItemsContainer.classList.remove('hidden');
                     renderItems(currentFeedData);
                 }
             }
@@ -555,7 +756,7 @@
 
                 // Mobile Nav
                 const mobileNavWrapper = document.createElement('div');
-                mobileNavWrapper.className = 'w-full md:hidden flex items-center gap-2';
+                mobileNavWrapper.className = 'w-full flex items-center gap-2 block md:hidden';
 
                 const mobileSelectContainer = document.createElement('div');
                 mobileSelectContainer.className = 'relative flex-grow';
@@ -569,27 +770,16 @@
                     option.textContent = feed.name;
                     mobileSelect.appendChild(option);
                 });
-                // Set value to current tab
                 mobileSelect.value = activeTabIndex;
-                // Attach event listener
                 mobileSelect.addEventListener('change', (e) => selectFeed(parseInt(e.target.value, 10)));
                 mobileSelectContainer.appendChild(mobileSelect);
-                // Add custom arrow as a DOM node (not via innerHTML)
                 const arrowDiv = document.createElement('div');
                 arrowDiv.className = 'absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none';
                 arrowDiv.innerHTML = `<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path></svg>`;
                 mobileSelectContainer.appendChild(arrowDiv);
-
-                // Mobile refresh button (only visible on mobile)
-                const mobileRefreshButton = document.createElement('button');
-                mobileRefreshButton.id = 'refresh-btn-mobile';
-                mobileRefreshButton.className = 'md:hidden relative flex-shrink-0 inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:outline-none border border-gray-600 rounded-md bg-gray-800 bg-opacity-50 text-gray-300 hover:bg-gray-700';
-                mobileRefreshButton.innerHTML = `<svg id="refresh-icon-mobile" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 4l1.5 1.5A9 9 0 0120.5 15M20 20l-1.5-1.5A9 9 0 013.5 9"></path></svg>`;
-                mobileRefreshButton.title = 'Refresh Feeds';
-                mobileRefreshButton.addEventListener('click', refreshFeeds);
                 mobileNavWrapper.appendChild(mobileSelectContainer);
 
-                // Desktop: Modern pill tab bar
+                // Desktop Nav
                 const desktopNavWrapper = document.createElement('div');
                 desktopNavWrapper.id = 'desktop-tabs';
                 desktopNavWrapper.className = 'hidden md:flex items-center justify-center gap-2 bg-gray-800/60 rounded-xl p-2 shadow';
@@ -598,7 +788,6 @@
                     const tabButton = document.createElement('button');
                     tabButton.dataset.index = index;
                     tabButton.className = 'px-4 py-2 rounded-full font-medium transition-colors duration-200 ease-in-out';
-                    // Custom label for NZBs (Movies) and NZBs (TV)
                     if (feed.name === 'NZBs (Movies)') {
                         tabButton.innerHTML = `<span>NZBs<br><span class='block text-[10px] text-gray-200 font-normal mt-[-2px]'>Movies</span></span>`;
                     } else if (feed.name === 'NZBs (TV)') {
@@ -620,86 +809,106 @@
 
                 const discoverGroup = feeds.filter(f => f.group === 'discover');
                 const recentGroup = feeds.filter(f => f.group === 'recent');
+                const serverGroup = feeds.filter(f => f.group === 'server');
 
-                discoverGroup.forEach(feed => {
-                    desktopNavWrapper.appendChild(createTab(feed, feeds.indexOf(feed)));
-                });
+                discoverGroup.forEach(feed => desktopNavWrapper.appendChild(createTab(feed, feeds.indexOf(feed))));
+                
+                if (recentGroup.length > 0) {
+                    desktopNavWrapper.appendChild(document.createElement('div')).className = "w-px h-8 bg-gray-500 mx-2";
+                    recentGroup.forEach(feed => desktopNavWrapper.appendChild(createTab(feed, feeds.indexOf(feed))));
+                }
 
-                // Vertical divider
-                const separator = document.createElement('div');
-                separator.className = "w-px h-8 bg-gray-500 mx-2";
-                desktopNavWrapper.appendChild(separator);
+                if (serverGroup.length > 0) {
+                    desktopNavWrapper.appendChild(document.createElement('div')).className = "w-px h-8 bg-gray-500 mx-2";
+                    serverGroup.forEach(feed => desktopNavWrapper.appendChild(createTab(feed, feeds.indexOf(feed))));
+                }
 
-                recentGroup.forEach(feed => {
-                    desktopNavWrapper.appendChild(createTab(feed, feeds.indexOf(feed)));
-                });
-
-                // Desktop nav wrapper parent
                 const navFlexWrapper = document.createElement('div');
                 navFlexWrapper.className = 'hidden md:flex items-center gap-4 justify-center w-full';
                 navFlexWrapper.style.marginLeft = 'auto';
                 navFlexWrapper.style.marginRight = 'auto';
                 navFlexWrapper.appendChild(desktopNavWrapper);
-
                 navContainer.appendChild(navFlexWrapper);
                 navContainer.appendChild(mobileNavWrapper);
 
                 desktopNavWrapper.style.position = 'relative';
-                // Add highlight pill
                 const navHighlight = document.createElement('div');
                 navHighlight.className = 'nav-highlight';
-                navHighlight.style.display = 'none'; // Hide until positioned
+                navHighlight.style.display = 'none';
                 desktopNavWrapper.appendChild(navHighlight);
 
                 setTimeout(positionNavHighlight, 0);
             }
             
-            async function refreshFeeds() {
-                const refreshIcons = document.querySelectorAll('#refresh-icon');
-                refreshIcons.forEach(icon => icon.classList.add('animate-spin'));
-                contentArea.classList.add('hidden');
-                tableView.classList.add('hidden');
-                loadingIndicator.classList.remove('hidden');
-                feedCache = {}; 
-                await fetchAllFeeds();
-                refreshIcons.forEach(icon => icon.classList.remove('animate-spin'));
-            }
-
             async function fetchAllFeeds() {
-                 const fetchPromises = feeds.map(feed => {
-                    if (feed.source === 'tmdb') {
-                        return Promise.all([
-                            fetchTmdbData('movie/upcoming', 'movie'), 
+                // Only show loading indicator for the Downloads tab
+                loadingIndicator.style.display = 'none';
+                selectFeed(activeTabIndex);
+
+                // Fetch all feeds in the background
+                feeds.forEach((feed, index) => {
+                    if (feed.source === 'sabnzbd') {
+                        fetchSabnzbdHistory().then(data => {
+                            feedCache[feed.url] = data;
+                            if (activeTabIndex === index) {
+                                selectFeed(activeTabIndex);
+                            }
+                        }).catch(() => {
+                            feedCache[feed.url] = [];
+                        });
+                    } else if (feed.source === 'tmdb') {
+                        Promise.all([
+                            fetchTmdbData('movie/upcoming', 'movie'),
                             fetchTmdbData('tv/popular', 'tv')
                         ]).then(([movies, tv]) => {
                             const movieTrailers = movies.filter(item => item && item.trailerKey);
                             const tvTrailers = tv.filter(item => item && item.trailerKey);
-                            return [...movieTrailers, ...tvTrailers];
+                            feedCache[feed.url] = [...movieTrailers, ...tvTrailers];
+                            if (activeTabIndex === index) {
+                                selectFeed(activeTabIndex);
+                            }
+                        }).catch(() => {
+                            feedCache[feed.url] = [];
+                        });
+                    } else {
+                        fetchRssFeed(feed.url, feed.type, feed.source === 'recent').then(data => {
+                            feedCache[feed.url] = data;
+                            if (activeTabIndex === index) {
+                                selectFeed(activeTabIndex);
+                            }
+                        }).catch(() => {
+                            feedCache[feed.url] = [];
                         });
                     }
-                    return fetchRssFeed(feed.url, feed.type, feed.source === 'recent');
-                 });
-                const results = await Promise.allSettled(fetchPromises);
-                results.forEach((result, index) => {
-                    const url = feeds[index].url;
-                    if(result.status === 'fulfilled'){
-                       feedCache[url] = result.value;
-                    } else {
-                       feedCache[url] = null;
-                       console.error(`Failed to fetch feed ${feeds[index].name}:`, result.reason);
-                    }
                 });
-                loadingIndicator.style.display = 'none';
-                selectFeed(activeTabIndex);
+            }
+
+            function startSabnzbdPolling() {
+                if (sabnzbdPollInterval) clearInterval(sabnzbdPollInterval);
+                sabnzbdPollInterval = setInterval(async () => {
+                    const downloadsIndex = feeds.findIndex(f => f.name === 'Downloads');
+                    if (downloadsIndex !== -1) {
+                        try {
+                            const data = await fetchSabnzbdHistory();
+                            feedCache[feeds[downloadsIndex].url] = data;
+                            if (activeTabIndex === downloadsIndex) {
+                                selectFeed(activeTabIndex);
+                            }
+                        } catch {
+                            feedCache[feeds[downloadsIndex].url] = [];
+                        }
+                    }
+                }, SABNZBD_POLL_MS);
             }
 
             async function initializeApp() {
                 setupTabs();
                 await fetchAllFeeds();
+                startSabnzbdPolling();
             }
             
             // --- EVENT LISTENERS ---
-            contentArea.addEventListener('click', (e) => {
+            feedItemsContainer.addEventListener('click', (e) => {
                 const actionTarget = e.target.closest('[data-action]');
                 if (!actionTarget) return;
                 const action = actionTarget.dataset.action;
